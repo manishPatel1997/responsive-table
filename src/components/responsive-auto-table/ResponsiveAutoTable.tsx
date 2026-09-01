@@ -39,6 +39,7 @@ function ResponsiveAutoTableInner<T>(
 
   const containerRef = useRef<HTMLDivElement>(null);
   const measurementRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
 
   const {
     visibleColumns,
@@ -56,6 +57,7 @@ function ResponsiveAutoTableInner<T>(
   } = useResponsiveTableLayout({
     containerRef,
     measurementRef,
+    tableRef,
     columns,
     data,
     responsive,
@@ -94,6 +96,7 @@ function ResponsiveAutoTableInner<T>(
         data-scrollable={needsHorizontalScroll ? 'true' : 'false'}
       >
         <table
+          ref={tableRef}
           className={`${styles.table} ${tableClassName ?? ''}`}
           aria-label={ariaLabel}
         >

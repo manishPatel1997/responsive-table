@@ -7,6 +7,9 @@
 
 import { ColumnMeasurement, ENGINE_DEFAULTS, VisibilityResult } from './types';
 
+// Width reserved for the inline '+' expand control button and gap
+export const DTR_CONTROL_WIDTH = 32;
+
 /**
  * Calculates which columns should be visible given their measured
  * dimensions and the available container width.
@@ -17,10 +20,11 @@ import { ColumnMeasurement, ENGINE_DEFAULTS, VisibilityResult } from './types';
  *    in lowest-priority-first order (highest priority number first, right-to-left).
  * 3. If still exceeding, progressively remove columns in lowest-priority-first order
  *    (highest priority number first, tie-break right-to-left) until visible columns fit.
- * 4. Non-alwaysVisible columns are removed first, followed by alwaysVisible columns
+ * 4. When columns are hidden, account for the 32px expand control column in available width.
+ * 5. Non-alwaysVisible columns are removed first, followed by alwaysVisible columns
  *    if space is still constrained, preserving at least the primary column (index 0).
- * 5. All hidden columns are accessible via the per-row child/details view.
- * 6. Zero horizontal scrollbar is generated.
+ * 6. All hidden columns are accessible via the per-row child/details view.
+ * 7. Zero horizontal scrollbar is generated.
  */
 export function calculateVisibleColumns(
   measurements: ColumnMeasurement[],
@@ -38,7 +42,6 @@ export function calculateVisibleColumns(
 
   // Edge case: zero or negative available width (e.g. hidden container)
   if (availableWidth <= 0) {
-    // Keep only the primary first column visible
     const firstCol = measurements[0];
     return {
       visibleKeys: [firstCol.key],
@@ -63,7 +66,7 @@ export function calculateVisibleColumns(
   const visibleSet = new Set<string>(measurements.map((m) => m.key));
   const hiddenSet = new Set<string>();
 
-  // If all columns fit at nominal width, return immediately
+  // If all columns fit at nominal width, return immediately (no expand control needed)
   if (totalRequiredWidth <= availableWidth) {
     return {
       visibleKeys: measurements.map((m) => m.key),
@@ -98,7 +101,7 @@ export function calculateVisibleColumns(
     }
   }
 
-  // If compression was sufficient, return all visible
+  // If compression was sufficient, return all visible (no expand control needed)
   if (totalRequiredWidth <= availableWidth) {
     let finalWidth = 0;
     for (const col of measurements) {
@@ -111,6 +114,10 @@ export function calculateVisibleColumns(
       totalVisibleWidth: finalWidth,
     };
   }
+
+  // Once at least one column is hidden, the '+' control button is rendered in column 0.
+  // We must account for the DTR_CONTROL_WIDTH in the available width budget.
+  const targetAvailableWidth = availableWidth - DTR_CONTROL_WIDTH;
 
   // Phase 2: Progressively remove columns by priority (lowest priority = highest number first)
   // First pass: remove hideable columns (alwaysVisible = false)
@@ -129,14 +136,14 @@ export function calculateVisibleColumns(
     visibleSet.delete(col.key);
     hiddenSet.add(col.key);
 
-    if (totalRequiredWidth <= availableWidth) {
+    if (totalRequiredWidth <= targetAvailableWidth) {
       break;
     }
   }
 
   // Phase 3: If still exceeding available width, continue removing remaining columns
   // (except column index 0 which holds the row expand control) in priority order
-  if (totalRequiredWidth > availableWidth) {
+  if (totalRequiredWidth > targetAvailableWidth) {
     const remainingRemovalCandidates = measurements
       .filter((col) => visibleSet.has(col.key) && col.columnIndex !== 0)
       .sort((a, b) => {
@@ -152,7 +159,7 @@ export function calculateVisibleColumns(
       visibleSet.delete(col.key);
       hiddenSet.add(col.key);
 
-      if (totalRequiredWidth <= availableWidth) {
+      if (totalRequiredWidth <= targetAvailableWidth) {
         break;
       }
     }
@@ -169,6 +176,10 @@ export function calculateVisibleColumns(
   let finalTotalWidth = 0;
   for (const key of visibleKeys) {
     finalTotalWidth += allocatedWidths.get(key) ?? 0;
+  }
+
+  if (hiddenKeys.length > 0) {
+    finalTotalWidth += DTR_CONTROL_WIDTH;
   }
 
   return {

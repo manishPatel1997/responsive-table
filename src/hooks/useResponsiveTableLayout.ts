@@ -1,6 +1,7 @@
 // ============================================================
 // ResponsiveAutoTable — Responsive Table Layout Hook
 // Connects ResizeObserver, DOM Measurement, and Pure Calculation Engine
+// with active post-layout DOM overlap verification
 // ============================================================
 
 import {
@@ -36,6 +37,7 @@ const useIsomorphicLayoutEffect =
 export interface UseResponsiveTableLayoutOptions<T> {
   containerRef: React.RefObject<HTMLDivElement | null>;
   measurementRef: React.RefObject<HTMLDivElement | null>;
+  tableRef?: React.RefObject<HTMLTableElement | null>;
   columns: ColumnDefinition<T>[];
   data: T[];
   responsive?: boolean;
@@ -62,6 +64,7 @@ export interface UseResponsiveTableLayoutReturn<T> {
 export function useResponsiveTableLayout<T>({
   containerRef,
   measurementRef,
+  tableRef,
   columns,
   data,
   responsive = true,
@@ -249,6 +252,45 @@ export function useResponsiveTableLayout<T>({
       }
     };
   }, [containerRef, measurements, measurementPhase, isReady, applyLayout]);
+
+  // Active Post-Render DOM Overlap Verification (DataTables Responsive active check)
+  // If the rendered table's actual scrollWidth > container clientWidth, immediately
+  // push down the lowest-priority visible column until no overlap exists.
+  useIsomorphicLayoutEffect(() => {
+    if (!responsive || !isReady || visibleKeys.length <= 1) return;
+
+    const tableEl = tableRef?.current;
+    const containerEl = containerRef?.current;
+    if (!tableEl || !containerEl) return;
+
+    const tableScrollWidth = tableEl.scrollWidth;
+    const containerClientWidth = containerEl.clientWidth;
+
+    // If actual rendered table overflows container boundary (even by 1px)
+    if (tableScrollWidth > containerClientWidth + 1) {
+      // Find the lowest priority column currently visible (excluding primary index 0)
+      const visibleCandidates = measurements
+        .filter((m) => visibleKeys.includes(m.key) && m.columnIndex !== 0)
+        .sort((a, b) => {
+          if (b.priority !== a.priority) return b.priority - a.priority;
+          return b.columnIndex - a.columnIndex;
+        });
+
+      if (visibleCandidates.length > 0) {
+        const colToHide = visibleCandidates[0].key;
+        setVisibleKeys((prev) => prev.filter((k) => k !== colToHide));
+        setHiddenKeys((prev) => (prev.includes(colToHide) ? prev : [...prev, colToHide]));
+      }
+    }
+  }, [
+    responsive,
+    isReady,
+    visibleKeys,
+    containerWidth,
+    tableRef,
+    containerRef,
+    measurements,
+  ]);
 
   // Map visible and hidden ColumnDefinition lists
   const columnMap = useMemo(() => {
